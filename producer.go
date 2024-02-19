@@ -1,12 +1,14 @@
 package main
 
 import (
-	"encoding/json"
 	"fmt"
 	"math/rand"
 	"os"
 
 	"github.com/confluentinc/confluent-kafka-go/kafka"
+	"github.com/confluentinc/confluent-kafka-go/schemaregistry"
+	"github.com/confluentinc/confluent-kafka-go/schemaregistry/serde"
+	"github.com/confluentinc/confluent-kafka-go/schemaregistry/serde/jsonschema"
 )
 
 type Order struct {
@@ -32,6 +34,26 @@ func main() {
         fmt.Printf("Failed to create producer: %s", err)
         os.Exit(1)
     }
+
+	urlSchema, ok := conf["bootstrap.servers"].(string)
+	if !ok {
+		fmt.Println("Error getting bootstrap.servers")
+        os.Exit(1)
+	}
+
+	client, err := schemaregistry.NewClient(schemaregistry.NewConfig(urlSchema))
+	if err != nil {
+		fmt.Printf("Failed to create schema registry client: %s\n", err)
+		os.Exit(1)
+	}
+
+	ser, err := jsonschema.NewSerializer(client, serde.ValueSerde, jsonschema.NewSerializerConfig())
+
+	if err != nil {
+		fmt.Printf("Failed to create serializer: %s\n", err)
+		os.Exit(1)
+	}
+
 
     // Go-routine to handle message delivery reports and
     // possibly other event types (errors, stats, etc)
@@ -70,7 +92,7 @@ func main() {
 
 	order4 := Order{
 		OrderAddress: "Rua Garra",
-		OrderId: 3,
+		OrderId: 4,
 		OrderTime: 12345,
 	}
 
@@ -79,17 +101,23 @@ func main() {
     for n := 0; n < 3; n++ {
         // key := users[rand.Intn(len(users))]
         data := items[rand.Intn(len(items))]
-		
-		dataByte, err := json.Marshal(data)
+
+		fmt.Println(data)
+		payload, err := ser.Serialize(topic, &order)
+		if err != nil {
+			fmt.Printf("Failed to serialize payload: %s\n", err)
+			os.Exit(1)
+		}
+
 		if err != nil {
 			fmt.Printf("Failed to convert struct to byte: %s", err)
 			os.Exit(1)
 		}
 
-        p.Produce(&kafka.Message{
+		p.Produce(&kafka.Message{
             TopicPartition: kafka.TopicPartition{Topic: &topic, Partition: kafka.PartitionAny},
             // Key:            []byte(key),
-            Value:          dataByte,
+            Value:          payload,
         }, nil)
     }
 
