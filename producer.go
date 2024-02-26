@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"math/rand"
 	"os"
@@ -9,6 +10,7 @@ import (
 	"github.com/confluentinc/confluent-kafka-go/schemaregistry"
 	"github.com/confluentinc/confluent-kafka-go/schemaregistry/serde"
 	"github.com/confluentinc/confluent-kafka-go/schemaregistry/serde/jsonschema"
+	"github.com/joho/godotenv"
 )
 
 type Order struct {
@@ -35,13 +37,22 @@ func main() {
         os.Exit(1)
     }
 
-	urlSchema, ok := conf["bootstrap.servers"].(string)
-	if !ok {
-		fmt.Println("Error getting bootstrap.servers")
-        os.Exit(1)
+	if err := godotenv.Load(); err != nil {
+       fmt.Printf("Error loading .env file: %v", err)
+    }
+
+	urlSchemaRegistry := os.Getenv("URL_SCHEMA_REGISTRY")
+	username := os.Getenv("USERNAME_SCHEMA_REGISTRY")
+	password := os.Getenv("PASSWORD_SCHEMA_REGISTRY")
+
+	if urlSchemaRegistry == "" || username == "" || password == "" {
+		fmt.Println("Failed to load environment variables to create config Schema Registry")
+		os.Exit(1)
 	}
 
-	client, err := schemaregistry.NewClient(schemaregistry.NewConfig(urlSchema))
+	configSchema := schemaregistry.NewConfigWithAuthentication(urlSchemaRegistry, username, password)
+
+	client, err := schemaregistry.NewClient(configSchema)
 	if err != nil {
 		fmt.Printf("Failed to create schema registry client: %s\n", err)
 		os.Exit(1)
@@ -71,28 +82,27 @@ func main() {
         }
     }()
 
-    // users := [...]string{"eabara", "jsmith", "sgarcia", "jbernard", "htanaka", "awalther"}
 	order := Order{
-		OrderAddress: "Rua Flores",
-		OrderId: 1,
+		OrderAddress: "Rua Jacinto",
+		OrderId: 12,
 		OrderTime: 12345,
 	}
 
 	order2 := Order{
-		OrderAddress: "Rua Goiás",
-		OrderId: 2,
+		OrderAddress: "Rua Goiás Topen",
+		OrderId: 12,
 		OrderTime: 12345,
 	}
 
 	order3 := Order{
-		OrderAddress: "Rua Jovita",
-		OrderId: 3,
+		OrderAddress: "Rua Miguel Jovita",
+		OrderId: 13,
 		OrderTime: 12345,
 	}
 
 	order4 := Order{
-		OrderAddress: "Rua Garra",
-		OrderId: 4,
+		OrderAddress: "Rua CT Garra",
+		OrderId: 14,
 		OrderTime: 12345,
 	}
 
@@ -101,9 +111,14 @@ func main() {
     for n := 0; n < 3; n++ {
         // key := users[rand.Intn(len(users))]
         data := items[rand.Intn(len(items))]
+		dataByte, err := json.Marshal(data)
+		if err != nil {
+			fmt.Printf("Failed to convert struct to byte: %s", err)
+			os.Exit(1)
+		}
 
-		fmt.Println(data)
-		payload, err := ser.Serialize(topic, &order)
+		fmt.Println(data, string(dataByte))
+		payload, err := ser.Serialize(topic, &data)
 		if err != nil {
 			fmt.Printf("Failed to serialize payload: %s\n", err)
 			os.Exit(1)
@@ -117,6 +132,7 @@ func main() {
 		p.Produce(&kafka.Message{
             TopicPartition: kafka.TopicPartition{Topic: &topic, Partition: kafka.PartitionAny},
             // Key:            []byte(key),
+            // Value:          dataByte,
             Value:          payload,
         }, nil)
     }
